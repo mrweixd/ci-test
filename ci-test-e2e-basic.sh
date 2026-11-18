@@ -27,12 +27,18 @@ TARGET_TEST=""
 
 SAVE_LOG=false
 RUN_DATETIME=""
+OAUTH_ENABLED="${CI_TEST_OAUTH:-false}"
 
+original_args=("$@")
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -b|--build)
             TARGET_COMPOSE_FILE="$COMPOSE_FILE"
             TARGET_TIMEOUT="$TIMEOUT"
+            shift
+            ;;
+        --oauth)
+            OAUTH_ENABLED=true
             shift
             ;;
         -t|--test)
@@ -54,6 +60,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+case "${OAUTH_ENABLED,,}" in
+    true|1) OAUTH_ENABLED=true ;;
+    false|0) OAUTH_ENABLED=false ;;
+    *) echo "Invalid CI_TEST_OAUTH: $OAUTH_ENABLED" >&2; exit 2 ;;
+esac
+
 # check if the test name is in the allowed test pool
 if [[ ! "$TARGET_TEST" =~ ^($TEST_POOL)$ ]]; then
     echo "Error: test name '$TARGET_TEST' is not in the allowed test pool"
@@ -62,7 +74,7 @@ if [[ ! "$TARGET_TEST" =~ ^($TEST_POOL)$ ]]; then
 fi
 
 RUN_DATETIME="${RUN_DATETIME:-$(date +%Y%m%d-%H%M%S)}"
-LOG_DIR="log/$RUN_DATETIME/e2e-basic/$TARGET_TEST"
+LOG_DIR="log/$RUN_DATETIME/e2e-basic/$TARGET_TEST/${CI_TEST_CHARGING_MODE:-suite}"
 
 # save docker compose logs (all + per service) into $LOG_DIR when -l is given
 save_logs() {
@@ -75,16 +87,66 @@ save_logs() {
     echo "Docker compose logs saved to $LOG_DIR"
 }
 
-# force-cleanup any leftovers from a previous run that failed to tear down cleanly
-docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v || true
-docker rm -f mongodb ci-mongodb 2>/dev/null || true
+if [[ -z "${CI_TEST_CHARGING_MODE:-}" ]]; then
+    result=0
+    CI_TEST_CHARGING_MODE=offline bash "$0" "${original_args[@]}" || result=1
+    CI_TEST_CHARGING_MODE=online bash "$0" "${original_args[@]}" || result=1
+    exit "$result"
+fi
+case "$CI_TEST_CHARGING_MODE" in
+    offline|online) ;;
+    *) echo "Invalid charging mode" >&2; exit 2 ;;
+esac
+
+# Compose uses fixed container names and, for some suites, fixed subnets.
+# Serialize project operations on this Linux runner host.
+exec 9>"/tmp/free5gc-ci-test-${UID}.lock" || exit 1
+flock -w 1800 9 || { echo 'Cannot acquire ci-test Docker lock' >&2; exit 1; }
+
+unset NRF_CONFIG_FILE FREE5GC_CERT_DIR NRF_PRIVATE_DIR
+cert_dir=""
+if [[ "$OAUTH_ENABLED" == true ]]; then
+    PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)" || exit 1
+    export NRF_CONFIG_FILE="$PROJECT_ROOT/config/nrfCfg.oauth.yaml"
+    [[ -f "$NRF_CONFIG_FILE" ]] || { echo "Missing OAuth NRF config" >&2; exit 1; }
+fi
+
+cleanup() {
+    local result=$?
+    trap - EXIT
+    if ! docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v; then
+        echo "Compose teardown failed" >&2
+        if [[ "$result" == 0 ]]; then result=1; fi
+    fi
+    if [[ -n "$cert_dir" ]]; then
+        rm -rf -- "$cert_dir" || result=1
+    fi
+    exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if [[ "$OAUTH_ENABLED" == true ]]; then
+    cert_dir="$(mktemp -d "${TMPDIR:-/tmp}/free5gc-oauth-certs.XXXXXXXX")" || exit 1
+    export FREE5GC_CERT_DIR="$cert_dir/shared"
+    export NRF_PRIVATE_DIR="$cert_dir/nrf"
+    mkdir -m 700 -- "$FREE5GC_CERT_DIR" "$NRF_PRIVATE_DIR" || exit 1
+    cp -R -- "$PROJECT_ROOT/cert/." "$FREE5GC_CERT_DIR/" || exit 1
+    # NRF initializes fresh CA and signer keys in its separate mount, then
+    # publishes their public certs into the shared mount before startup.
+    rm -f -- "$FREE5GC_CERT_DIR"/{root,nrf}.{key,pem} || exit 1
+    echo "OAuth ON: fresh NRF signing identity (HTTP test network)"
+fi
+
+# Require a clean project baseline before starting the next case.
+docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v || exit 1
 
 # Up the containers using the selected compose file
 if ! docker compose -f "$TARGET_COMPOSE_FILE" up -d --wait --wait-timeout "$TARGET_TIMEOUT"; then
     echo "Error: Failed to start containers using $TARGET_COMPOSE_FILE"
     docker compose -f "$TARGET_COMPOSE_FILE" logs
     save_logs
-    docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v || true
     exit 1
 fi
 
@@ -95,7 +157,8 @@ echo "Running test... $TARGET_TEST"
 
 case "$TARGET_TEST" in
     "TestRegPduCharging")
-        docker exec ue /bin/bash -c "cd test && ./test-e2e-reg-pdu-charging.sh"
+        docker compose -f "$TARGET_COMPOSE_FILE" exec -T ue /bin/bash -c \
+            'cd test && ./test-e2e-reg-pdu-charging.sh "$1"' bash "$CI_TEST_CHARGING_MODE"
         exit_code=$?
     ;;
 esac
@@ -105,12 +168,6 @@ if [ $exit_code -ne 0 ]; then
 fi
 
 save_logs
-
-# Cleanup: Stop and remove the containers after the test
-if ! docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v; then
-    echo "Warning: Failed to stop and remove containers using $TARGET_COMPOSE_FILE, forcing cleanup"
-    docker compose -f "$TARGET_COMPOSE_FILE" rm -f -s -v || true
-fi
 
 echo "Test completed with exit code: $exit_code"
 

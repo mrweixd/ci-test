@@ -4,7 +4,13 @@ on:
   push:
     branches:
         - main
-  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-test-docker
+  cancel-in-progress: false
 
 env:
   FREE5GC_REPO: https://github.com/free5gc/free5gc
@@ -21,6 +27,7 @@ env:
 
 jobs:
   basic-test:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64]
 
     steps:
@@ -31,20 +38,28 @@ jobs:
           jq --version
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       - name: Clone free5GC
         run: |
           rm -rf free5gc
-          git clone -j $(nproc) --recursive $FREE5GC_REPO
+          git clone --no-checkout "$FREE5GC_REPO" free5gc
+          git -C free5gc checkout --detach 31e07dd9e858c3de5b2403b22507aa8716daeb27
+          git -C free5gc submodule update --init --recursive --jobs "$(nproc)"
+          checkout_nf() {
+            git -C "free5gc/NFs/$1" fetch --no-tags "https://github.com/mrweixd/$1.git" "$2"
+            git -C "free5gc/NFs/$1" checkout --detach "$2"
+            git -C "free5gc/NFs/$1" rev-parse HEAD
+          }
+
+          checkout_nf pcf d55cceb976076b20b748d699d752ce01ba507138
+          checkout_nf chf 099d79391fef32c0e1ff16fdb9208a27c131ee28
+          checkout_nf nef ce31ea72517ee9e6277ea4a817739273dc9be14b
 
       - name: Make images
         run: make
-
-      - name: Check compose
-        run: |
-          docker compose -f "$BUILD_COMPOSE_IT_FILE" up -d --wait --wait-timeout "$TIMEOUT"
-          docker compose -f "$BUILD_COMPOSE_IT_FILE" down
 
       - name: Run basic tests
         run: |
@@ -63,6 +78,12 @@ jobs:
           ./ci-test-it.sh --build --test TestMultiAmfRegistration
           ./ci-test-it.sh --build --test TestRequestTwoPDUSessions
 
+      - name: Run OAuth access control and registration
+        run: |
+          ./ci-test-it.sh --build --test TestOAuthAccessControl
+          ./ci-test-it.sh --build --oauth --test TestRegistration
+          ./ci-test-it.sh --build --oauth --test TestOAuthAccessControl
+
       - name: Run basic non3gpp tests
         run: |
           ./ci-test-it.sh --build --test TestN3iwf
@@ -74,14 +95,9 @@ jobs:
           ./ci-test-it.sh --build --test TestDynamicDC
           ./ci-test-it.sh --build --test TestXnDcHandover
           
-      - name: Cleanup docker resources
-        if: always()
-        run: |
-          echo "Cleaning up docker resources..."
-          docker system prune -a -f
-          docker volume prune -a -f
 
   e2e-test:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64]
 
     steps:
@@ -92,43 +108,48 @@ jobs:
           jq --version
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       - name: Clone free5GC
         run: |
           rm -rf free5gc
-          git clone -j $(nproc) --recursive $FREE5GC_REPO
+          git clone --no-checkout "$FREE5GC_REPO" free5gc
+          git -C free5gc checkout --detach 31e07dd9e858c3de5b2403b22507aa8716daeb27
+          git -C free5gc submodule update --init --recursive --jobs "$(nproc)"
+          checkout_nf() {
+            git -C "free5gc/NFs/$1" fetch --no-tags "https://github.com/mrweixd/$1.git" "$2"
+            git -C "free5gc/NFs/$1" checkout --detach "$2"
+            git -C "free5gc/NFs/$1" rev-parse HEAD
+          }
+
+          checkout_nf pcf d55cceb976076b20b748d699d752ce01ba507138
+          checkout_nf chf 099d79391fef32c0e1ff16fdb9208a27c131ee28
+          checkout_nf nef ce31ea72517ee9e6277ea4a817739273dc9be14b
 
       - name: Make images
         run: make
-
-      - name: Check E2E basic compose
-        run: |
-          docker compose -f "$BUILD_COMPOSE_E2E_BASIC_FILE" up -d --wait --wait-timeout "$TIMEOUT"
-          docker compose -f "$BUILD_COMPOSE_E2E_BASIC_FILE" down
 
       - name: Run E2E basic tests
         run: |
           ./ci-test-e2e-basic.sh --build --test TestRegPduCharging
 
-      - name: Check E2E ULCL compose
+      # Uses OAuth-aware NRF and NF-to-NF communication (including CHF).
+      # ULCL is intentionally not run with OAuth ON yet; its TI seeding script
+      # calls protected UDR directly without an NF identity/token.
+      - name: Run OAuth ON charging E2E test
         run: |
-          docker compose -f "$BUILD_COMPOSE_E2E_ULCL_FILE" up -d --wait --wait-timeout "$TIMEOUT"
-          docker compose -f "$BUILD_COMPOSE_E2E_ULCL_FILE" down
+          ./ci-test-e2e-basic.sh --build --oauth --test TestRegPduCharging
 
       - name: Run E2E ULCL tests
         run: |
           ./ci-test-e2e-ulcl.sh --build --test TestULCLTrafficInfluence
           ./ci-test-e2e-ulcl.sh --build --test TestULCLMultiPathUe
 
-      - name: Cleanup docker resources
-        if: always()
-        run: |
-          echo "Cleaning up docker resources..."
-          docker system prune -a -f
-          docker volume prune -a -f
 
   ci-basic-test:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64]
 
     steps:
@@ -139,12 +160,9 @@ jobs:
           jq --version
 
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check compose
-        run: |
-          docker compose -f "$CI_COMPOSE_IT_FILE" up -d --wait --wait-timeout "$TIMEOUT"
-          docker compose -f "$CI_COMPOSE_IT_FILE" down
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       - name: Run basic tests
         run: |
@@ -174,14 +192,8 @@ jobs:
           ./ci-test-it.sh --test TestDynamicDC
           ./ci-test-it.sh --test TestXnDcHandover
 
-      - name: Cleanup docker resources
-        if: always()
-        run: |
-          echo "Cleaning up docker resources..."
-          docker system prune -a -f
-          docker volume prune -a -f
-
   ci-e2e-test:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64]
 
     steps:
@@ -192,30 +204,15 @@ jobs:
           jq --version
 
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check E2E basic compose
-        run: |
-          docker compose -f "$CI_COMPOSE_E2E_BASIC_FILE" up -d --wait --wait-timeout "$TIMEOUT"
-          docker compose -f "$CI_COMPOSE_E2E_BASIC_FILE" down
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       - name: Run E2E basic tests
         run: |
           ./ci-test-e2e-basic.sh --test TestRegPduCharging
 
-      - name: Check E2E ULCL compose
-        run: |
-          docker compose -f "$CI_COMPOSE_E2E_ULCL_FILE" up -d --wait --wait-timeout "$TIMEOUT"
-          docker compose -f "$CI_COMPOSE_E2E_ULCL_FILE" down
-
       - name: Run E2E ULCL tests
         run: |
           ./ci-test-e2e-ulcl.sh --test TestULCLTrafficInfluence
           ./ci-test-e2e-ulcl.sh --test TestULCLMultiPathUe
-
-      - name: Cleanup docker resources
-        if: always()
-        run: |
-          echo "Cleaning up docker resources..."
-          docker system prune -a -f
-          docker volume prune -a -f
