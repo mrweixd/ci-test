@@ -20,8 +20,8 @@ docker exec psa-upf-0 iptables -t nat -S POSTROUTING
 
 The Internet route must use the intended N6 gateway and interface, and the UE MASQUERADE rule must target that same interface. Identify the interface from its subnet rather than assuming it is always eth0 or eth1.
 
-## Workaround
+## Compose configuration
 
-For this topology, route Internet traffic through N6 gateway 10.100.50.1. A local Compose override can give each PSA-UPF's `n6-net` attachment `gw_priority: 1` (Docker Compose 2.33.1 or later). Recreate the affected containers and verify their routes before rerunning the suite. See [Docker's gateway priority documentation](https://docs.docker.com/reference/compose-file/services/#gw_priority).
+Both ULCL Compose files set `gw_priority: 1` on each PSA-UPF's `n6-net` attachment. Docker Compose 2.33.1 or later selects this network for the default gateway. Recreate the stack after changing its network configuration. See [Docker's gateway priority documentation](https://docs.docker.com/reference/compose-file/services/#gw_priority).
 
-The E2E tests do not modify routes or NAT rules automatically.
+The N6GW test target at 10.100.50.10 is on the PSA's directly connected subnet. If it also fails, inspect N9 forwarding and the PSA's N6 NAT counters before attributing the failure to the default route.

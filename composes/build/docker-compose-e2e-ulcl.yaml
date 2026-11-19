@@ -19,6 +19,8 @@ services:
       args:
         DEBUG_TOOLS: "false"
     command: ./upf -c ./config/upfcfg.yaml
+    sysctls:
+      net.ipv4.ip_forward: "1"
     volumes:
       - ../../config/ulcl/i-upfCfg-0.yaml:/free5gc/config/upfcfg.yaml
     cap_add:
@@ -39,6 +41,8 @@ services:
       args:
         DEBUG_TOOLS: "false"
     command: ./upf -c ./config/upfcfg.yaml
+    sysctls:
+      net.ipv4.ip_forward: "1"
     volumes:
       - ../../config/ulcl/i-upfCfg-1.yaml:/free5gc/config/upfcfg.yaml
     cap_add:
@@ -59,6 +63,8 @@ services:
       args:
         DEBUG_TOOLS: "false"
     command: ./upf -c ./config/upfcfg.yaml
+    sysctls:
+      net.ipv4.ip_forward: "1"
     volumes:
       - ../../config/ulcl/i-upfCfg-2.yaml:/free5gc/config/upfcfg.yaml
     cap_add:
@@ -79,6 +85,8 @@ services:
       args:
         DEBUG_TOOLS: "false"
     command: ./upf -c ./config/upfcfg.yaml
+    sysctls:
+      net.ipv4.ip_forward: "1"
     volumes:
       - ../../config/ulcl/psa-upfCfg-0.yaml:/free5gc/config/upfcfg.yaml
     cap_add:
@@ -88,6 +96,7 @@ services:
         aliases:
           - psa-upf-0.free5gc.org
       n6-net:
+        gw_priority: 1
         aliases:
           - psa-upf-0.n6.org
 
@@ -98,6 +107,8 @@ services:
       args:
         DEBUG_TOOLS: "false"
     command: ./upf -c ./config/upfcfg.yaml
+    sysctls:
+      net.ipv4.ip_forward: "1"
     volumes:
       - ../../config/ulcl/psa-upfCfg-1.yaml:/free5gc/config/upfcfg.yaml
     cap_add:
@@ -107,6 +118,7 @@ services:
         aliases:
           - psa-upf-1.free5gc.org
       n6-net:
+        gw_priority: 1
         aliases:
           - psa-upf-1.n6.org
 
@@ -117,6 +129,8 @@ services:
       args:
         DEBUG_TOOLS: "false"
     command: ./upf -c ./config/upfcfg.yaml
+    sysctls:
+      net.ipv4.ip_forward: "1"
     volumes:
       - ../../config/ulcl/psa-upfCfg-2.yaml:/free5gc/config/upfcfg.yaml
     cap_add:
@@ -126,6 +140,7 @@ services:
         aliases:
           - psa-upf-2.free5gc.org
       n6-net:
+        gw_priority: 1
         aliases:
           - psa-upf-2.n6.org
 

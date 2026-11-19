@@ -1,9 +1,9 @@
 package pinger
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
-	"strings"
 )
 
 func Pinger(dstIP string, nic string) error {
@@ -11,12 +11,15 @@ func Pinger(dstIP string, nic string) error {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("ping failed: %v, output: %s", err, output)
-	}
-
-	if strings.Contains(string(output), "0 reveived") {
-		return fmt.Errorf("no response from %s: %s", dstIP, string(output))
+		return fmt.Errorf("ping failed: %w, output: %s", err, output)
 	}
 
 	return nil
+}
+
+// NoReplies distinguishes an iputils ping with zero replies (exit 1) from
+// local execution errors such as an invalid interface or missing binary.
+func NoReplies(err error) bool {
+	var status *exec.ExitError
+	return errors.As(err, &status) && status.ExitCode() == 1
 }

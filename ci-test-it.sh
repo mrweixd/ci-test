@@ -79,9 +79,9 @@ LOG_DIR="log/$RUN_DATETIME/it/$TARGET_TEST"
 save_logs() {
     [ "$SAVE_LOG" = true ] || return 0
     mkdir -p "$LOG_DIR"
-    docker compose -f "$TARGET_COMPOSE_FILE" logs --no-color -t > "$LOG_DIR/all.log" 2>&1
-    for svc in $(docker compose -f "$TARGET_COMPOSE_FILE" config --services); do
-        docker compose -f "$TARGET_COMPOSE_FILE" logs --no-color -t "$svc" > "$LOG_DIR/$svc.log" 2>&1
+    timeout -k 5s 30s docker compose -f "$TARGET_COMPOSE_FILE" logs --no-color -t > "$LOG_DIR/all.log" 2>&1
+    for svc in $(timeout -k 5s 15s docker compose -f "$TARGET_COMPOSE_FILE" config --services); do
+        timeout -k 5s 30s docker compose -f "$TARGET_COMPOSE_FILE" logs --no-color -t "$svc" > "$LOG_DIR/$svc.log" 2>&1
     done
     echo "Docker compose logs saved to $LOG_DIR"
 }
@@ -102,7 +102,7 @@ fi
 cleanup() {
     local result=$?
     trap - EXIT
-    if ! docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v; then
+    if ! timeout -k 5s 2m docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v; then
         echo "Compose teardown failed" >&2
         if [[ "$result" == 0 ]]; then result=1; fi
     fi
@@ -128,12 +128,12 @@ if [[ "$OAUTH_ENABLED" == true ]]; then
 fi
 
 # Require a clean project baseline before starting the next case.
-docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v || exit 1
+timeout -k 5s 2m docker compose -f "$TARGET_COMPOSE_FILE" down --remove-orphans -v || exit 1
 
 # Up the containers using the selected compose file
 if ! docker compose -f "$TARGET_COMPOSE_FILE" up -d --wait --wait-timeout "$TARGET_TIMEOUT"; then
     echo "Error: Failed to start containers using $TARGET_COMPOSE_FILE"
-    docker compose -f "$TARGET_COMPOSE_FILE" logs
+    timeout -k 5s 30s docker compose -f "$TARGET_COMPOSE_FILE" logs
     save_logs
     exit 1
 fi
@@ -227,7 +227,7 @@ case "$TARGET_TEST" in
 esac
 
 if [ $exit_code -ne 0 ]; then
-    docker compose -f "$TARGET_COMPOSE_FILE" logs
+    timeout -k 5s 30s docker compose -f "$TARGET_COMPOSE_FILE" logs
 fi
 
 save_logs

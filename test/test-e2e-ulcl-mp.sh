@@ -1,127 +1,15 @@
 #!/bin/bash
+set -u
+source ./ulcl-case.sh || exit 1
 
-##########################
-#
-# usage:
-# ./test-ulcl-mp.sh <test-name>
-#
-# e.g. ./test-ulcl-mp.sh <TestULCLMultiPathUe1|TestULCLMultiPathUe2>
-#
-##########################
+case "${1:-}" in
+    TestULCLMultiPathUe1) ue=1 ;;
+    TestULCLMultiPathUe2) ue=2 ;;
+    *) echo 'Expected TestULCLMultiPathUe1 or TestULCLMultiPathUe2' >&2; exit 2 ;;
+esac
 
 suite_exit_code=0
-
-echo "test $1"
-
-target_webconsole_subscription_data_file=""
-
-case "$1" in
-    "TestULCLMultiPathUe1")
-        target_webconsole_subscription_data_file="json/webconsole-subscription-data-mp-1.json"
-    ;;
-    "TestULCLMultiPathUe2")
-        target_webconsole_subscription_data_file="json/webconsole-subscription-data-mp-2.json"
-    ;;
-esac
-
-echo "target_webconsole_subscription_data_file: $target_webconsole_subscription_data_file"
-
-# post ue data to db
-./api-webconsole-subscribtion-data-action.sh post $target_webconsole_subscription_data_file
-if [ $? -ne 0 ]; then
-    echo "Failed to post subscription data"
-    exit 1
-fi
-
-# run test
-cd goTest
-go test -v -vet=off -run $1
-if [ $? -ne 0 ]; then
-    suite_exit_code=1
-fi
-cd ..
-
-# delete ue data from db
-./api-webconsole-subscribtion-data-action.sh delete $target_webconsole_subscription_data_file
-if [ $? -ne 0 ]; then
-    echo "Failed to delete subscription data"
-    exit 1
-fi
-
-# Additional static path overlap cases (using the same test as the original case above).
-
-echo "test $1 full"
-
-target_webconsole_subscription_data_file=""
-
-case "$1" in
-    "TestULCLMultiPathUe1")
-        target_webconsole_subscription_data_file="json/webconsole-subscription-data-mp-1-full.json"
-    ;;
-    "TestULCLMultiPathUe2")
-        target_webconsole_subscription_data_file="json/webconsole-subscription-data-mp-2-full.json"
-    ;;
-esac
-
-echo "target_webconsole_subscription_data_file: $target_webconsole_subscription_data_file"
-
-# post ue data to db
-./api-webconsole-subscribtion-data-action.sh post $target_webconsole_subscription_data_file
-if [ $? -ne 0 ]; then
-    echo "Failed to post subscription data"
-    exit 1
-fi
-
-# run test
-cd goTest
-go test -v -vet=off -run $1
-if [ $? -ne 0 ]; then
-    suite_exit_code=1
-fi
-cd ..
-
-# delete ue data from db
-./api-webconsole-subscribtion-data-action.sh delete $target_webconsole_subscription_data_file
-if [ $? -ne 0 ]; then
-    echo "Failed to delete subscription data"
-    exit 1
-fi
-
-echo "test $1 partial"
-
-target_webconsole_subscription_data_file=""
-
-case "$1" in
-    "TestULCLMultiPathUe1")
-        target_webconsole_subscription_data_file="json/webconsole-subscription-data-mp-1-partial.json"
-    ;;
-    "TestULCLMultiPathUe2")
-        target_webconsole_subscription_data_file="json/webconsole-subscription-data-mp-2-partial.json"
-    ;;
-esac
-
-echo "target_webconsole_subscription_data_file: $target_webconsole_subscription_data_file"
-
-# post ue data to db
-./api-webconsole-subscribtion-data-action.sh post $target_webconsole_subscription_data_file
-if [ $? -ne 0 ]; then
-    echo "Failed to post subscription data"
-    exit 1
-fi
-
-# run test
-cd goTest
-go test -v -vet=off -run $1
-if [ $? -ne 0 ]; then
-    suite_exit_code=1
-fi
-cd ..
-
-# delete ue data from db
-./api-webconsole-subscribtion-data-action.sh delete $target_webconsole_subscription_data_file
-if [ $? -ne 0 ]; then
-    echo "Failed to delete subscription data"
-    exit 1
-fi
-
-exit $suite_exit_code
+for suffix in '' '-full' '-partial'; do
+    run_ulcl_case "$1" "json/webconsole-subscription-data-mp-${ue}${suffix}.json"
+done
+exit "$suite_exit_code"

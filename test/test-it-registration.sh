@@ -21,8 +21,9 @@ fi
 output=$(mktemp) || exit 1
 trap 'rm -f -- "$output"' EXIT
 go_test_exit_code=0
-(cd goTest && go test -count=1 -v -vet=off -run '^TestRegistration$') > "$output" 2>&1 || go_test_exit_code=1
+(cd goTest && go test -count=1 -v -vet=off -run '^(TestRegistrationCompleteExchange|TestRegistration)$') > "$output" 2>&1 || go_test_exit_code=1
 cat "$output"
+grep -Eq '^--- PASS: TestRegistrationCompleteExchange \(' "$output" || go_test_exit_code=1
 grep -Eq '^--- PASS: TestRegistration \(' "$output" || go_test_exit_code=1
 
 # delete ue data from db

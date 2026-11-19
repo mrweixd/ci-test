@@ -53,7 +53,7 @@ func TestULCLTrafficInfluence(t *testing.T) {
 
 	// check charging record
 	t.Run("Check Charging Record", func(t *testing.T) {
-		checkChargingRecord(t)
+		checkChargingRecord(t, "01")
 	})
 }
 
@@ -63,15 +63,15 @@ func pingN6gwSuccessMecFailed(t *testing.T) {
 		t.Errorf("Ping n6gw failed: expected ping success, but got %v", err)
 	}
 	err = pinger.Pinger(MEC_IP, NIC_1)
-	if err == nil {
-		t.Errorf("Ping mec success: expected ping failed, but got success")
+	if !pinger.NoReplies(err) {
+		t.Errorf("expected zero MEC ping replies, got %v", err)
 	}
 }
 
 func pingN6gwFailedMecSuccess(t *testing.T) {
 	err := pinger.Pinger(N6GW_IP, NIC_1)
-	if err == nil {
-		t.Errorf("Ping n6gw success: expected ping failed, but got success")
+	if !pinger.NoReplies(err) {
+		t.Errorf("expected zero N6GW ping replies, got %v", err)
 	}
 	err = pinger.Pinger(MEC_IP, NIC_1)
 	if err != nil {

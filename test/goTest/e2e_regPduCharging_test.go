@@ -47,6 +47,6 @@ func TestRegPduCharging(t *testing.T) {
 	}
 
 	t.Run("Check Charging Record", func(t *testing.T) {
-		checkChargingRecord(t)
+		checkChargingRecord(t, "01010203")
 	})
 }

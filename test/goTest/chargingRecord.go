@@ -5,9 +5,11 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/free5gc/webconsole/backend/WebUI"
 )
 
-func checkChargingRecord(t *testing.T) {
+func checkChargingRecord(t *testing.T, snssai string) {
 	cmd := exec.Command("bash", "../api-webconsole-charging-record.sh", "get", "../json/webconsole-login-data.json")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -26,7 +28,7 @@ func checkChargingRecord(t *testing.T) {
 		}
 	}
 
-	var chargingRecords []map[string]interface{}
+	var chargingRecords []WebUI.RatingGroupDataUsage
 	if err := json.Unmarshal([]byte(jsonLine), &chargingRecords); err != nil {
 		t.Errorf("Failed to parse charging record JSON: %v\nJSON content: %s", err, jsonLine)
 		return
@@ -38,22 +40,22 @@ func checkChargingRecord(t *testing.T) {
 	}
 
 	t.Run("Check Session Level Charging Record", func(t *testing.T) {
-		checkXLevelChargingRecord(t, chargingRecords, "Session", "")
+		requireUsage(t, chargingRecords, snssai, "", "")
 	})
 
 	t.Run("Check Flow Level Charging Record", func(t *testing.T) {
-		checkXLevelChargingRecord(t, chargingRecords, "Flow", "internet")
+		requireUsage(t, chargingRecords, snssai, "internet", ONE_IP+"/32")
 	})
 }
 
-func checkXLevelChargingRecord(t *testing.T, chargingRecords []map[string]interface{}, level string, dnn string) {
-	for _, record := range chargingRecords {
-		if record["Dnn"] == dnn {
-			if record["TotalVol"].(float64) != 0 {
-				return
-			}
-			t.Errorf("%s level charging record is empty", level)
+func requireUsage(t *testing.T, records []WebUI.RatingGroupDataUsage, snssai, dnn, filter string) {
+	t.Helper()
+	for _, record := range records {
+		if record.Supi == UE_IMSI && record.Snssai == snssai && record.Dnn == dnn &&
+			record.Filter == filter && record.TotalVol > 0 {
+			return
 		}
 	}
-	t.Errorf("No %s level charging record found", level)
+	t.Errorf("missing positive charging volume for SUPI %s, S-NSSAI %s, DNN %q, filter %q",
+		UE_IMSI, snssai, dnn, filter)
 }
