@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -34,35 +33,6 @@ import (
 // reference test does and TNGF accepts it in practice, so it's ported faithfully rather
 // than "fixed".
 const tngfFixedRadiusAuthenticator = "ea408c3a615fc82899bb8f2fa2e374e9"
-
-func tngfReadPDUSessionEstablishmentAccept(
-	t *testing.T,
-	ue *RanUeContext,
-	conn interface{ Read([]byte) (int, error) },
-	buffer []byte,
-) (*nasMessage.PDUSessEstAccept, error) {
-	t.Helper()
-
-	for i := 0; i < 4; i++ {
-		n, err := conn.Read(buffer)
-		if err != nil {
-			return nil, fmt.Errorf("Read NAS Message Fail:%+v", err)
-		}
-
-		nasMsg, err := DecodePDUSessionEstablishmentAccept(ue, n, buffer)
-		if err == nil {
-			return nasMsg, nil
-		}
-		if strings.Contains(err.Error(), "got *message.CfgUpdateCmd") {
-			t.Logf("Skip NAS message before PDU Session Establishment Accept: %+v", err)
-			continue
-		}
-
-		return nil, fmt.Errorf("DecodePDUSessionEstablishmentAccept Fail: %+v", err)
-	}
-
-	return nil, fmt.Errorf("PDU Session Establishment Accept not received")
-}
 
 // TestTngf simulates a full trusted-non-3GPP-access UE talking to TNGF: EAP-5G relayed
 // over RADIUS Access-Request/Access-Accept cycles (Identity, Registration Request,
@@ -609,18 +579,16 @@ func TestTngf(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("Establish TCP connection with TNGF successfully")
-	tcpConnWithTNGF.SetReadDeadline(time.Now().Add(20 * time.Second))
+	if err := tcpConnWithTNGF.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 
-	nasEnv := make([]byte, 65535)
-	n, err = tcpConnWithTNGF.Read(nasEnv)
+	defer tcpConnWithTNGF.Close()
+	nasEnv, err := readNasEnvelope(tcpConnWithTNGF)
 	if err != nil {
 		t.Fatal(err)
 	}
-	nasEnv, n, err = DecapNasPduFromEnvelope(nasEnv[:n])
-	if err != nil {
-		t.Fatal(err)
-	}
-	nasMsg, err := NASDecode(ue, nasMessage.SecHdrTypeIntegrityProtectedAndCiphered, nasEnv[:n])
+	nasMsg, err := nasMessage.Parse(nasEnv, ue.NewSecCtx())
 	if err != nil {
 		t.Fatalf("NAS Decode Fail: %+v", err)
 	}
@@ -771,7 +739,10 @@ func TestTngf(t *testing.T) {
 	}
 
 	var pduAddress net.IP
-	pduSessionAccept, err := tngfReadPDUSessionEstablishmentAccept(t, ue, tcpConnWithTNGF, buffer)
+	if err := tcpConnWithTNGF.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	pduSessionAccept, err := readPDUSessionEstablishmentAccept(ue, tcpConnWithTNGF)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -837,11 +808,13 @@ func TestTngf(t *testing.T) {
 	pinger.Source = pduAddress.String()
 
 	time.Sleep(3 * time.Second)
-	pinger.Run()
+	if err := pinger.Run(); err != nil {
+		t.Fatalf("ping through GRE/IPsec: %v", err)
+	}
 	time.Sleep(1 * time.Second)
 
 	stats := pinger.Statistics()
-	if stats.PacketsSent != stats.PacketsRecv {
+	if stats.PacketsSent != pinger.Count || stats.PacketsRecv != pinger.Count {
 		t.Fatal("Ping Failed")
 	}
 

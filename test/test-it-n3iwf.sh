@@ -18,10 +18,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-cd goTest
-go test -v -vet=off -run TestN3iwf
-go_test_exit_code=$?
-cd ..
+output=$(mktemp) || exit 1
+trap 'rm -f -- "$output"' EXIT
+go_test_exit_code=0
+(cd goTest && go test -count=1 -v -vet=off -run '^(TestN3iwf|TestNasTCPFraming|TestNasTCPConfigurationAndAccept)$') > "$output" 2>&1 || go_test_exit_code=1
+cat "$output"
+for required in TestN3iwf TestNasTCPFraming TestNasTCPConfigurationAndAccept; do
+    grep -Eq "^--- PASS: $required \(" "$output" || go_test_exit_code=1
+done
 
 # delete ue data from db
 ./api-webconsole-subscribtion-data-action.sh delete json/webconsole-subscription-data-it.json

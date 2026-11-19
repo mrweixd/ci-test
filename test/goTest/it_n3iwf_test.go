@@ -655,19 +655,15 @@ func TestN3iwf(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nasEnv := make([]byte, 65535)
-
-	n, err = tcpConnWithN3IWF.Read(nasEnv)
-	if err != nil {
+	if err := tcpConnWithN3IWF.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
-		return
 	}
-
-	nasEnv, n, err = DecapNasPduFromEnvelope(nasEnv[:n])
+	defer tcpConnWithN3IWF.Close()
+	nasEnv, err := readNasEnvelope(tcpConnWithN3IWF)
 	if err != nil {
 		t.Fatal(err)
 	}
-	nasMsg, err := NASDecode(ue, nasMessage.SecHdrTypeIntegrityProtectedAndCiphered, nasEnv[:n])
+	nasMsg, err := nasMessage.Parse(nasEnv, ue.NewSecCtx())
 	if err != nil {
 		t.Fatalf("NAS Decode Fail: %+v", err)
 	}
@@ -833,34 +829,18 @@ func TestN3iwf(t *testing.T) {
 		t.Fatalf("Applying XFRM rules failed: %+v", err)
 	}
 
-	// Reference test's own TODO: UE Configuration Update Command content isn't checked.
-	if n, err := tcpConnWithN3IWF.Read(buffer); err != nil {
-		t.Fatalf("No UeConfigUpdate Message: %+v", err)
-	} else {
-		_ = n
+	if err := tcpConnWithN3IWF.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		t.Fatal(err)
 	}
-
-	var pduAddress net.IP
-
-	// Read NAS from N3IWF
-	if n, err := tcpConnWithN3IWF.Read(buffer); err != nil {
-		t.Fatalf("Read NAS Message Fail:%+v", err)
-	} else {
-		nasMsg, err := DecodePDUSessionEstablishmentAccept(ue, n, buffer)
-		if err != nil {
-			t.Fatalf("DecodePDUSessionEstablishmentAccept Fail: %+v", err)
-		}
-
-		spew.Config.Indent = "\t"
-		nasStr := spew.Sdump(nasMsg)
-		t.Log("Dump DecodePDUSessionEstablishmentAccept:\n", nasStr)
-		pduAddress, err = GetPDUAddress(nasMsg)
-		if err != nil {
-			t.Fatalf("GetPDUAddress Fail: %+v", err)
-		}
-
-		t.Logf("PDU Address: %s", pduAddress.String())
+	accept, err := readPDUSessionEstablishmentAccept(ue, tcpConnWithN3IWF)
+	if err != nil {
+		t.Fatal(err)
 	}
+	pduAddress, err := GetPDUAddress(accept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("PDU Address: %s", pduAddress)
 
 	var linkGRE netlink.Link
 
@@ -956,16 +936,18 @@ func TestN3iwf(t *testing.T) {
 
 	pinger.Count = 5
 	pinger.Timeout = 10 * time.Second
-	pinger.Source = "10.60.0.1"
+	pinger.Source = pduAddress.String()
 
 	time.Sleep(3 * time.Second)
 
-	pinger.Run()
+	if err := pinger.Run(); err != nil {
+		t.Fatalf("ping through GRE/IPsec: %v", err)
+	}
 
 	time.Sleep(1 * time.Second)
 
 	stats := pinger.Statistics()
-	if stats.PacketsSent != stats.PacketsRecv {
+	if stats.PacketsSent != pinger.Count || stats.PacketsRecv != pinger.Count {
 		t.Fatal("Ping Failed")
 		return
 	}

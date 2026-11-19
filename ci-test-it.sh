@@ -227,6 +227,20 @@ case "$TARGET_TEST" in
 esac
 
 if [ $exit_code -ne 0 ]; then
+    for svc in free5gc-upf free5gc-n3iwf free5gc-tngf it; do
+        echo "Network diagnostics for $svc"
+        timeout -k 2s 10s docker compose -f "$TARGET_COMPOSE_FILE" exec -T --interactive=false "$svc" sh -c '
+            ip -4 addr
+            ip -4 route
+            ip -4 route get 8.8.8.8
+            ip -4 route get 1.1.1.1
+            ip -s link
+            cat /proc/sys/net/ipv4/ip_forward
+            iptables -t nat -nvL POSTROUTING
+            iptables -nvL FORWARD
+            ip xfrm policy
+        '
+    done
     timeout -k 5s 30s docker compose -f "$TARGET_COMPOSE_FILE" logs
 fi
 

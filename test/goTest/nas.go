@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 
 	"github.com/free5gc/nas/ie"
@@ -122,6 +123,53 @@ func encapNasMsgToEnvelope(nasPDU []byte) []byte {
 	binary.BigEndian.PutUint16(nasEnv, uint16(len(nasPDU)))
 	nasEnv = append(nasEnv, nasPDU...)
 	return nasEnv
+}
+
+// readNasEnvelope reads exactly one length-prefixed NAS message from TCP.
+func readNasEnvelope(conn io.Reader) ([]byte, error) {
+	var header [2]byte
+	if _, err := io.ReadFull(conn, header[:]); err != nil {
+		return nil, fmt.Errorf("read NAS length: %w", err)
+	}
+	size := int(binary.BigEndian.Uint16(header[:]))
+	if size < 3 {
+		return nil, fmt.Errorf("invalid NAS envelope length %d", size)
+	}
+	payload := make([]byte, size)
+	if _, err := io.ReadFull(conn, payload); err != nil {
+		return nil, fmt.Errorf("read NAS payload: %w", err)
+	}
+	return payload, nil
+}
+
+func readPDUSessionEstablishmentAccept(ue *RanUeContext, conn io.Reader) (*message.PDUSessEstAccept, error) {
+	for i := 0; i < 4; i++ {
+		payload, err := readNasEnvelope(conn)
+		if err != nil {
+			return nil, err
+		}
+		msg, err := message.Parse(payload, ue.NewSecCtx())
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := msg.(*message.CfgUpdateCmd); ok {
+			continue
+		}
+		dl, ok := msg.(*message.DLNASTransport)
+		if !ok || dl.PayloadCntr == nil {
+			return nil, fmt.Errorf("expected PDU session DL NAS transport, got %T", msg)
+		}
+		gsm, err := message.ParseGSM(dl.PayloadCntr.Contents)
+		if err != nil {
+			return nil, err
+		}
+		accept, ok := gsm.(*message.PDUSessEstAccept)
+		if !ok {
+			return nil, fmt.Errorf("expected PDU session establishment accept, got %T", gsm)
+		}
+		return accept, nil
+	}
+	return nil, fmt.Errorf("PDU session establishment accept missing after configuration updates")
 }
 
 // DecapNasPduFromEnvelope strips the NAS message envelope (TS 24.502 9.4) and returns
