@@ -42,6 +42,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Clean previous CI stacks
+        run: |
+          flock -w 1800 "/tmp/free5gc-ci-test-${UID}.lock" bash test/cleanup-compose-projects.sh
+
       - name: Clone free5GC
         run: |
           rm -rf free5gc
@@ -94,7 +98,11 @@ jobs:
           ./ci-test-it.sh --build --test TestDC
           ./ci-test-it.sh --build --test TestDynamicDC
           ./ci-test-it.sh --build --test TestXnDcHandover
-          
+
+      - name: Clean CI stacks
+        if: always()
+        run: |
+          flock -w 1800 "/tmp/free5gc-ci-test-${UID}.lock" bash test/cleanup-compose-projects.sh
 
   e2e-test:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -111,6 +119,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+
+      - name: Clean previous CI stacks
+        run: |
+          flock -w 1800 "/tmp/free5gc-ci-test-${UID}.lock" bash test/cleanup-compose-projects.sh
 
       - name: Clone free5GC
         run: |
@@ -147,6 +159,10 @@ jobs:
           ./ci-test-e2e-ulcl.sh --build --test TestULCLTrafficInfluence
           ./ci-test-e2e-ulcl.sh --build --test TestULCLMultiPathUe
 
+      - name: Clean CI stacks
+        if: always()
+        run: |
+          flock -w 1800 "/tmp/free5gc-ci-test-${UID}.lock" bash test/cleanup-compose-projects.sh
 
   ci-basic-test:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -163,6 +179,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+
+      - name: Clean previous CI stacks
+        run: |
+          flock -w 1800 "/tmp/free5gc-ci-test-${UID}.lock" bash test/cleanup-compose-projects.sh
 
       - name: Run basic tests
         run: |
@@ -192,6 +212,11 @@ jobs:
           ./ci-test-it.sh --test TestDynamicDC
           ./ci-test-it.sh --test TestXnDcHandover
 
+      - name: Clean CI stacks
+        if: always()
+        run: |
+          flock -w 1800 "/tmp/free5gc-ci-test-${UID}.lock" bash test/cleanup-compose-projects.sh
+
   ci-e2e-test:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64]
@@ -208,6 +233,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Clean previous CI stacks
+        run: |
+          flock -w 1800 "/tmp/free5gc-ci-test-${UID}.lock" bash test/cleanup-compose-projects.sh
+
       - name: Run E2E basic tests
         run: |
           ./ci-test-e2e-basic.sh --test TestRegPduCharging
@@ -216,3 +245,8 @@ jobs:
         run: |
           ./ci-test-e2e-ulcl.sh --test TestULCLTrafficInfluence
           ./ci-test-e2e-ulcl.sh --test TestULCLMultiPathUe
+
+      - name: Clean CI stacks
+        if: always()
+        run: |
+          flock -w 1800 "/tmp/free5gc-ci-test-${UID}.lock" bash test/cleanup-compose-projects.sh
