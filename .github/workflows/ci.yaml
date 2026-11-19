@@ -62,6 +62,9 @@ jobs:
           checkout_nf chf 099d79391fef32c0e1ff16fdb9208a27c131ee28
           checkout_nf nef ce31ea72517ee9e6277ea4a817739273dc9be14b
 
+      - name: Apply validated AUSF and OpenAPI changes
+        run: bash test/prepare-ausf.sh
+
       - name: Make images
         run: make
 
@@ -139,6 +142,9 @@ jobs:
           checkout_nf pcf d55cceb976076b20b748d699d752ce01ba507138
           checkout_nf chf 099d79391fef32c0e1ff16fdb9208a27c131ee28
           checkout_nf nef ce31ea72517ee9e6277ea4a817739273dc9be14b
+
+      - name: Apply validated AUSF and OpenAPI changes
+        run: bash test/prepare-ausf.sh
 
       - name: Make images
         run: make

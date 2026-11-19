@@ -1,0 +1,52 @@
+diff --git a/go.mod b/go.mod
+index 0ae408e..6e452e4 100644
+--- a/go.mod
++++ b/go.mod
+@@ -76,3 +76,5 @@ require (
+ 	google.golang.org/protobuf v1.36.1 // indirect
+ 	gopkg.in/yaml.v3 v3.0.1 // indirect
+ )
++
++replace github.com/free5gc/openapi => ../../openapi-token-diagnostic
+diff --git a/internal/sbi/consumer/nrf_service.go b/internal/sbi/consumer/nrf_service.go
+index d5fbdb3..51ad063 100644
+--- a/internal/sbi/consumer/nrf_service.go
++++ b/internal/sbi/consumer/nrf_service.go
+@@ -105,17 +105,19 @@ func (s *nnrfService) SendSearchNFInstances(
+ 
+ 	ctx, _, err := s.consumer.Context().GetTokenCtxForNRF(models.Nrf_NFMgmt_ServiceName_NNRF_DISC)
+ 	if err != nil {
+-		return nil, err
++		return nil, fmt.Errorf("acquire nnrf-disc token: %w", err)
+ 	}
+ 
+ 	res, err := client.NFInstancesStoreApi.SearchNFInstances(ctx, &param)
+ 
+-	if err != nil || res == nil {
+-		logger.ConsumerLog.Errorf("SearchNFInstances failed: %+v", err)
+-		return nil, err
++	if err != nil {
++		return nil, fmt.Errorf("NRF discovery GET: %w", err)
++	}
++	if res == nil || res.Nrf_NFDisc_SearchResult == nil {
++		return nil, errors.New("NRF discovery GET: empty search result")
+ 	}
+ 
+-	return res.Nrf_NFDisc_SearchResult, err
++	return res.Nrf_NFDisc_SearchResult, nil
+ }
+ 
+ func (s *nnrfService) SendDeregisterNFInstance() (*models.ProblemDetails, error) {
+diff --git a/internal/sbi/processor/ue_authentication.go b/internal/sbi/processor/ue_authentication.go
+index a77c408..cda2ec8 100644
+--- a/internal/sbi/processor/ue_authentication.go
++++ b/internal/sbi/processor/ue_authentication.go
+@@ -314,7 +314,7 @@ func (p *Processor) UeAuthPostRequestProcedure(
+ 		problemDetails := models.ProblemDetails{
+ 			Title:  "UDM Discovery Failed",
+ 			Cause:  "UDM_DISCOVERY_FAILED",
+-			Detail: err.Error(),
++			Detail: "Unable to discover the UDM service.",
+ 			Status: http.StatusServiceUnavailable,
+ 		}
+ 		c.Set(sbi.IN_PB_DETAILS_CTX_STR, problemDetails.Cause)
