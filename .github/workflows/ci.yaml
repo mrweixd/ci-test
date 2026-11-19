@@ -61,6 +61,12 @@ jobs:
       - name: Make images
         run: make
 
+      - name: Run OAuth access control and registration
+        run: |
+          ./ci-test-it.sh --build --test TestOAuthAccessControl
+          ./ci-test-it.sh --build --oauth --test TestRegistration
+          ./ci-test-it.sh --build --oauth --test TestOAuthAccessControl
+
       - name: Run basic tests
         run: |
           ./ci-test-it.sh --build --test TestRegistration
@@ -77,12 +83,6 @@ jobs:
           ./ci-test-it.sh --build --test TestReSynchronization
           ./ci-test-it.sh --build --test TestMultiAmfRegistration
           ./ci-test-it.sh --build --test TestRequestTwoPDUSessions
-
-      - name: Run OAuth access control and registration
-        run: |
-          ./ci-test-it.sh --build --test TestOAuthAccessControl
-          ./ci-test-it.sh --build --oauth --test TestRegistration
-          ./ci-test-it.sh --build --oauth --test TestOAuthAccessControl
 
       - name: Run basic non3gpp tests
         run: |
